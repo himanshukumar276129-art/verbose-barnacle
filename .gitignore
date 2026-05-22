@@ -1,0 +1,40 @@
+# Secrets
+.env
+.env.*
+!.env.example
+!media-processor.env.production.example
+!vedaapex-backend/.env.example
+!vedaapex-backend/.env.production.example
+
+# Python
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Python runtime data
+app/logs/
+app/uploads/
+*.db
+
+# Node
+node_modules/
+vedaapex-backend/node_modules/
+vedaapex-backend/dist/
+npm-debug.log*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+
+# Build / temp / backups
+backups/
+tmp/
+*.tmp
+
+# Generated static artifacts
+static/generated/

@@ -98,13 +98,9 @@ async def health():
 async def ready():
     return {"status": "ready", "service": "vedaapex-python-media"}
 
-@app.get("/")
-async def root():
-    return {
-        "message": "VedaApex Universal AI Media Processing SaaS API Hub is active.",
-        "docs_url": "/docs",
-        "api_v1_base": "/api/v1"
-    }
+@app.api_route("/", methods=["GET", "HEAD"])
+async def home():
+    return {"status": "ok"}
 
 if __name__ == "__main__":
     import uvicorn

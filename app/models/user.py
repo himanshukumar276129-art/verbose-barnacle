@@ -16,11 +16,14 @@ class User(UserBase, table=True):
     role: str = Field(default="USER")  # USER or ADMIN
     referral_code: str = Field(unique=True, index=True, default="")
     referred_by: Optional[str] = None
-    firebase_uid: Optional[str] = Field(default=None, unique=True, index=True)
     api_key: Optional[str] = Field(default=None, unique=True, index=True)
     webhook_url: Optional[str] = None
     last_login_at: Optional[datetime] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
+    plan: str = Field(default="free")
+    is_pro: bool = Field(default=False)
+    subscription_start: Optional[datetime] = Field(default=None)
+    subscription_end: Optional[datetime] = Field(default=None)
 
     # Existing relationships
     subscription: Optional["Subscription"] = Relationship(back_populates="user")

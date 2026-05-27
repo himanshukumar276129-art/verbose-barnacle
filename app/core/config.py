@@ -298,6 +298,34 @@ class Settings(BaseSettings):
     GROQ_API_KEY_TIER7: Optional[str] = None
     GROQ_API_KEY_TIER8: Optional[str] = None
     GROQ_API_KEY_TIER9: Optional[str] = None
+
+    # Genspark Tier Keys
+    GENSPARK_API_KEY_TIER1: Optional[str] = None
+    GENSPARK_API_KEY_TIER2: Optional[str] = None
+    GENSPARK_API_KEY_TIER3: Optional[str] = None
+    GENSPARK_API_KEY_TIER4: Optional[str] = None
+    GENSPARK_API_KEY_TIER5: Optional[str] = None
+    GENSPARK_API_KEY_TIER6: Optional[str] = None
+    GENSPARK_API_KEY_TIER7: Optional[str] = None
+    GENSPARK_API_KEY_TIER8: Optional[str] = None
+    GENSPARK_API_BASE_URL: Optional[str] = None
+    GENSPARK_VIDEO_CREATE_PATH: str = "/v1/video/generations"
+    GENSPARK_VIDEO_STATUS_PATH: str = "/v1/video/generations/{task_id}"
+    GENSPARK_AUTH_HEADER: str = "Authorization"
+    GENSPARK_AUTH_SCHEME: str = "Bearer"
+
+    # Tripo3D Tier Keys
+    TRIPO3D_API_KEY_TIER1: Optional[str] = None
+    TRIPO3D_API_KEY_TIER2: Optional[str] = None
+    TRIPO3D_API_KEY_TIER3: Optional[str] = None
+    TRIPO3D_API_KEY_TIER4: Optional[str] = None
+    TRIPO3D_API_KEY_TIER5: Optional[str] = None
+    TRIPO3D_API_KEY_TIER6: Optional[str] = None
+    TRIPO3D_API_KEY_TIER7: Optional[str] = None
+    TRIPO3D_API_KEY_TIER8: Optional[str] = None
+    TRIPO3D_API_BASE_URL: str = "https://api.tripo3d.ai/v2/openapi"
+    TRIPO3D_MODEL_VERSION: str = "Turbo-v1.0-20250506"
+    TRIPO3D_EXPORT_FORMAT: str = "GLB"
     
     # Ollama Base URL config
     OLLAMA_API_BASE: Optional[str] = "http://localhost:11434/v1"
@@ -450,10 +478,16 @@ class Settings(BaseSettings):
     CLAID_API_KEY_TIER7: Optional[str] = None
     CLAID_API_KEY_TIER8: Optional[str] = None
     
-    FIREBASE_SERVICE_ACCOUNT_JSON: Optional[str] = None
+    SUPABASE_URL: Optional[str] = None
+    SUPABASE_KEY: Optional[str] = None
+    SUPABASE_SERVICE_ROLE_KEY: Optional[str] = None
+    SUPABASE_TIMEOUT_SECONDS: int = 15
     
     RAZORPAY_KEY_ID: Optional[str] = None
     RAZORPAY_KEY_SECRET: Optional[str] = None
+    RAZORPAY_WEBHOOK_SECRET: Optional[str] = None
+    RAZORPAY_CURRENCY: str = "INR"
+    RAZORPAY_MIN_AMOUNT_PAISA: int = 1000
     MEDIA_PROCESSOR_API_KEY: Optional[str] = None
     MEDIA_PUBLIC_BASE_URL: Optional[str] = None
     MEDIA_ALLOWED_ORIGINS: str = "http://localhost:3000,http://localhost:8080"

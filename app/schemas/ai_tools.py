@@ -6,12 +6,12 @@ class ImageGenerationRequest(BaseModel):
     tier: int = 1 # 1 to 9
     num_outputs: int = 1
     aspect_ratio: str = "1:1"
-    provider: Optional[str] = "tensor" # Can be "tensor", "fal", "replicate", "deepai", "fotor", "wix", "zoviz", "piapi"
+    provider: Optional[str] = "auto" # Free-route first, then premium fallback.
 
 class VideoGenerationRequest(BaseModel):
     prompt: str
     tier: int = 1 # 1 to 8
-    provider: Optional[str] = "fal" # Can be "fal", "segmind", "replicate", "krea", "pixverse", "heygen", "d-id", "kling", "luma", "hailuo", "wan", "sora", "veo", "seedance", "hunyuan"
+    provider: Optional[str] = "auto" # Free-route first, then premium fallback.
     avatar_id: Optional[str] = None
     voice_id: Optional[str] = None
 
@@ -19,7 +19,7 @@ class TextGenerationRequest(BaseModel):
     prompt: str
     system_prompt: Optional[str] = None
     tier: int = 1
-    provider: Optional[str] = "replicate" # Can be "replicate", "wix", "together", "fireworks", "cloudflare", "free"
+    provider: Optional[str] = "auto" # Free-route first, then premium fallback.
 
 class PromptGenerationRequest(BaseModel):
     base_concept: str

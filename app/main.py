@@ -14,6 +14,7 @@ from app.routers.promo import router as promo_router
 from app.routers.subscriptions import router as subscription_router
 from app.routers.wallet import router as wallet_router
 from app.routers.api_keys import router as api_keys_router
+from app.routers.payments import router as payments_router
 
 # Import new media processing routers
 from app.routes.media import router as media_router
@@ -81,6 +82,7 @@ app.include_router(promo_router, prefix="/api/v1")
 app.include_router(subscription_router, prefix="/api/v1")
 app.include_router(wallet_router, prefix="/api/v1")
 app.include_router(api_keys_router, prefix="/api/v1")
+app.include_router(payments_router, prefix="/api/v1")
 
 # Register new advanced media routes
 app.include_router(media_router, prefix="/api/v1")

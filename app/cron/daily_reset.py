@@ -47,13 +47,19 @@ def cleanup_expired_sessions():
 def expire_subscriptions():
     """Mark ended subscriptions as expired."""
     print("[Cron] Checking expired subscriptions...")
+    from app.services.subscription_service import SubscriptionService
     with Session(engine) as session:
         subs = session.exec(select(UserSubscription).where(UserSubscription.status == "active", UserSubscription.current_period_end < datetime.utcnow())).all()
         for s in subs:
             s.status = "expired"
             session.add(s)
+            
+            # Fetch user and reset convenience fields
+            user = session.get(User, s.user_id)
+            if user:
+                SubscriptionService.deactivate_plan(session, user)
         session.commit()
-        print(f"[Cron] Expired {len(subs)} subscriptions.")
+        print(f"[Cron] Expired {len(subs)} subscriptions and updated user statuses.")
 
 
 def reset_daily_api_usage():

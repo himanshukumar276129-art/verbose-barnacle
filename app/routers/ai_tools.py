@@ -1,10 +1,8 @@
-from fastapi import APIRouter, HTTPException, Depends, Request
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from typing import Any
-from jose import jwt, JWTError
-from sqlmodel import Session, select
-from datetime import datetime, time
-import traceback
+from sqlmodel import Session
+from datetime import datetime
 
 from ..schemas.ai_tools import (
     ImageGenerationRequest, VideoGenerationRequest, TextGenerationRequest,
@@ -17,8 +15,13 @@ from ..schemas.ai_tools import (
     ColorSuggestionRequest, ThreeDEditRequest, Furniture3DGenerationRequest
 )
 from ..services.ai_service import AIToolsService
+from ..services.auth_service import AuthService
+from ..services.generation_policy_service import GenerationPolicyService
+from ..services.smart_generation_service import RoutedGenerationResult, SmartGenerationService
+from ..services.token_service import TokenService
 from ..db.session import get_session
-from ..models.user import User, Subscription, Generation
+from ..models.token import AIGenerationHistory
+from ..models.user import User, Generation
 from ..core.config import settings
 
 router = APIRouter(
@@ -34,57 +37,90 @@ async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
     session: Session = Depends(get_session)
 ) -> User:
-    # 1. Check x-api-key header first
-    api_key_header = request.headers.get("x-api-key")
-    if api_key_header:
-        user = session.exec(select(User).where(User.api_key == api_key_header)).first()
-        if user:
-            if not user.is_active:
-                raise HTTPException(status_code=401, detail="Account deactivated.")
-            return user
+    return await AuthService.get_authenticated_user(request, credentials, session)
 
-    # 2. Check Authorization header for api key
-    if not credentials:
-        raise HTTPException(
-            status_code=401,
-            detail="Authentication required. Please log in to generate content."
+
+def _extract_output_url(result: Any) -> str | None:
+    if isinstance(result, list) and result:
+        first = result[0]
+        if isinstance(first, str):
+            return first
+        if isinstance(first, dict):
+            return first.get("url") or first.get("output_url")
+
+    if isinstance(result, str):
+        return result
+
+    if isinstance(result, dict):
+        if isinstance(result.get("video"), dict):
+            return result["video"].get("url")
+        return result.get("url") or result.get("output_url")
+
+    return None
+
+
+def _daily_limit_error(policy, gen_type: str) -> HTTPException:
+    return HTTPException(
+        status_code=429,
+        detail={
+            "message": f"Daily free credits exhausted for {gen_type}.",
+            "plan": policy.plan_name,
+            "credits_required": policy.usage_cost,
+            "daily_limit": policy.daily_credit_limit,
+            "daily_used": policy.daily_credits_used,
+            "daily_remaining": policy.daily_credits_remaining,
+            "wallet_balance": policy.wallet_balance,
+            "suggestion": "Upgrade your plan or add credits to continue with premium fallback routing.",
+        },
+    )
+
+
+async def _run_generation_with_policy(
+    gen_type: str,
+    generation_func,
+    policy,
+    kwargs: dict[str, Any],
+) -> RoutedGenerationResult:
+    preferred_provider = kwargs.get("provider")
+
+    if SmartGenerationService.supports_free_first(gen_type, kwargs):
+        if policy.use_daily_free_route:
+            try:
+                return await SmartGenerationService.run_route(
+                    gen_type=gen_type,
+                    generation_func=generation_func,
+                    kwargs=kwargs,
+                    route_mode="free",
+                    preferred_provider=preferred_provider,
+                )
+            except Exception:
+                if not policy.allow_premium_fallback:
+                    raise
+                return await SmartGenerationService.run_route(
+                    gen_type=gen_type,
+                    generation_func=generation_func,
+                    kwargs=kwargs,
+                    route_mode="premium",
+                    preferred_provider=preferred_provider,
+                )
+
+        if not policy.allow_premium_fallback:
+            raise _daily_limit_error(policy, gen_type)
+
+        return await SmartGenerationService.run_route(
+            gen_type=gen_type,
+            generation_func=generation_func,
+            kwargs=kwargs,
+            route_mode="premium",
+            preferred_provider=preferred_provider,
         )
-    token = credentials.credentials
-    if token.startswith("va_"):
-        user = session.exec(select(User).where(User.api_key == token)).first()
-        if user:
-            if not user.is_active:
-                raise HTTPException(status_code=401, detail="Account deactivated.")
-            return user
 
-    # 3. Standard JWT verification
-    try:
-        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
-        subject = payload.get("sub")
-        if not subject:
-            raise HTTPException(status_code=401, detail="Invalid token.")
-    except JWTError:
-        raise HTTPException(status_code=401, detail="Invalid or expired token.")
-
-    # Check session
-    from app.models.token import UserSession
-    db_session = session.exec(
-        select(UserSession).where(
-            UserSession.token == token,
-            UserSession.expires_at > datetime.utcnow()
-        )
-    ).first()
-    if not db_session:
-        raise HTTPException(status_code=401, detail="Session expired. Please login again.")
-
-    if str(subject).isdigit():
-        user = session.get(User, int(subject))
-    else:
-        user = session.exec(select(User).where(User.email == subject)).first()
-
-    if not user:
-        raise HTTPException(status_code=401, detail="User not found.")
-    return user
+    result = await generation_func(**kwargs)
+    return RoutedGenerationResult(
+        result=result,
+        provider=kwargs.get("provider"),
+        route_mode="direct",
+    )
 
 async def check_and_log_generation(
     user: User,
@@ -97,93 +133,41 @@ async def check_and_log_generation(
 ):
     from app.services.exhaustion_service import ExhaustionService
 
-    # Check if server is currently crashed/offline due to exhausted API keys
+    # Free-first routing depends on the shared exhaustion guard.
     if ExhaustionService.is_crashed():
         raise HTTPException(
             status_code=503,
             detail="Couldn't reach server. Please try again later. / सर्वर तक नहीं पहुँचा जा सका। कृपया बाद में प्रयास करें।"
         )
 
-    # 1. Determine if user has an active premium subscription (Pro, Max, Ultra)
-    is_free = True
-    if user.subscription and user.subscription.status == "active":
-        plan_name = user.subscription.plan.upper()
-        if plan_name in ["PRO", "MAX", "ULTRA"]:
-            is_free = False
+    del args
+    policy = GenerationPolicyService.build_policy(session, user, gen_type)
+    if not policy.use_daily_free_route and not policy.allow_premium_fallback:
+        raise _daily_limit_error(policy, gen_type)
 
-    # 2. Get generation cost
-    type_map = {
-        "image": "IMAGE",
-        "video": "VIDEO",
-        "text": "TEXT",
-        "prompt": "TEXT",
-        "3d": "MODEL_3D",
-        "tts": "TTS",
-        "logo": "IMAGE",
-        "bg_removal": "BG_REMOVAL",
-        "image_enhance": "IMAGE",
-        "ppt": "PPT",
-        "word": "TEXT",
-        "excel": "TEXT",
-        "pdf": "TEXT",
-        "animation": "VIDEO",
-        "code": "TEXT",
-        "design": "IMAGE",
-        "ads": "TEXT",
-        "home_design": "IMAGE",
-        "interior_design": "IMAGE",
-        "home_map": "IMAGE",
-        "color_suggestions": "TEXT",
-        "edit_3d": "MODEL_3D"
-    }
-    cost_key = type_map.get(gen_type.lower(), "TEXT")
-    
-    from app.config.costs import GENERATION_COSTS
-    cost = GENERATION_COSTS.get(cost_key, 1)
-
-    from app.services.token_service import TokenService
-    from app.models.token import AIGenerationHistory
-
-    # 3. Check credits if user is Free or Check Daily Limits if Ultra
-    if is_free:
-        wallet = TokenService.get_balance(session, user.id)
-        if wallet.balance < cost:
-            raise HTTPException(
-                status_code=402,
-                detail={
-                    "message": "Insufficient Credits",
-                    "required": cost,
-                    "available": wallet.balance,
-                    "deficit": cost - wallet.balance,
-                    "suggestion": "Please upgrade to Pro, Max, or Ultra for unlimited generation!"
-                }
-            )
-    elif plan_name == "ULTRA":
-        # Ultra Plan Limit Enforcement
-        from app.services.usage_tracking_service import UsageTrackingService
-        if not UsageTrackingService.check_limit(session, user.id, gen_type, plan_name):
-            from app.config.api_limits import ULTRA_DAILY_LIMITS, TOOL_TYPE_TO_LIMIT_KEY
-            limit_key = TOOL_TYPE_TO_LIMIT_KEY.get(gen_type.lower(), "text_to_text")
-            max_limit = ULTRA_DAILY_LIMITS.get(limit_key, 0)
-            raise HTTPException(
-                status_code=429,
-                detail={
-                    "message": f"Daily API Limit Reached for {gen_type}",
-                    "limit": max_limit,
-                    "suggestion": "Your daily free quota for this tool has been exhausted. Limits reset every 24 hours."
-                }
-            )
-
-    # 4. Perform the actual generation with error handling for API exhaustion
     try:
-        result = await generation_func(*args, **kwargs)
-        
-        # Increment Ultra Plan usage on success
-        if plan_name == "ULTRA":
-            from app.services.usage_tracking_service import UsageTrackingService
-            UsageTrackingService.increment_usage(session, user.id, gen_type)
+        routed = await _run_generation_with_policy(
+            gen_type=gen_type,
+            generation_func=generation_func,
+            policy=policy,
+            kwargs=kwargs,
+        )
+        result = routed.result
             
     except Exception as e:
+        session.add(
+            AIGenerationHistory(
+                user_id=user.id,
+                type=policy.cost_key,
+                prompt=log_prompt,
+                cost=0,
+                status="FAILED",
+                provider=kwargs.get("provider"),
+                created_at=datetime.utcnow(),
+            )
+        )
+        session.commit()
+
         err_msg = str(e).lower()
         is_exhaustion = any(word in err_msg for word in [
             "exhausted", "limit", "rate limit", "credits", "unauthorized", "api key",
@@ -197,14 +181,8 @@ async def check_and_log_generation(
             )
         raise e
     
-    # 5. Extract output URL if present
-    output_url = None
-    if isinstance(result, list) and len(result) > 0:
-        output_url = result[0]
-    elif isinstance(result, str):
-        output_url = result
-    
-    # 6. Log the generation history
+    output_url = _extract_output_url(result)
+
     generation_log = Generation(
         user_id=user.id,
         type=gen_type,
@@ -214,29 +192,31 @@ async def check_and_log_generation(
     )
     session.add(generation_log)
 
-    # Save to Token System History table
-    token_gen_log = AIGenerationHistory(
-        user_id=user.id,
-        type=cost_key,
-        prompt=log_prompt,
-        output_url=output_url,
-        cost=cost if is_free else 0,
-        status="SUCCESS"
+    session.add(
+        AIGenerationHistory(
+            user_id=user.id,
+            type=policy.cost_key,
+            prompt=log_prompt,
+            output_url=output_url,
+            cost=policy.usage_cost if policy.daily_credit_limit is not None else 0,
+            status="SUCCESS",
+            provider=routed.provider,
+            model_used=routed.route_mode,
+            created_at=datetime.utcnow(),
+        )
     )
-    session.add(token_gen_log)
-    
-    # 7. Deduct credits if user is Free
-    if is_free:
+
+    if policy.charge_wallet_on_success:
         TokenService.deduct_credits(
-            session, user.id, cost,
+            session,
+            user.id,
+            policy.usage_cost,
             tx_type="USAGE",
-            description=f"{cost_key} generation: -{cost} credits"
+            description=f"{policy.cost_key} generation: -{policy.usage_cost} credits"
         )
     else:
         session.commit()
-    
-    # 8. Trigger Webhook if Ultra user has one configured
-    # Assuming User model has a webhook_url field (placeholder for now)
+
     if hasattr(user, "webhook_url") and user.webhook_url:
         from ..services.webhook_service import WebhookService
         import asyncio
@@ -305,7 +285,7 @@ async def generate_text(
     session: Session = Depends(get_session)
 ):
     try:
-        provider = getattr(request, "provider", "replicate")
+        provider = getattr(request, "provider", "auto")
         result = await check_and_log_generation(
             user=current_user,
             gen_type="text",

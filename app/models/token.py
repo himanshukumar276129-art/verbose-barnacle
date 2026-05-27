@@ -33,6 +33,19 @@ class GenerationStatus(str, Enum):
     PENDING = "PENDING"
 
 
+class PaymentOrderStatus(str, Enum):
+    CREATED = "CREATED"
+    PAID = "PAID"
+    FAILED = "FAILED"
+    EXPIRED = "EXPIRED"
+
+
+class PaymentStatus(str, Enum):
+    PENDING = "PENDING"
+    VERIFIED = "VERIFIED"
+    FAILED = "FAILED"
+
+
 # ─── Token Wallet ────────────────────────────────────────
 class TokenWallet(SQLModel, table=True):
     __tablename__ = "token_wallet"
@@ -210,6 +223,50 @@ class APIUsage(SQLModel, table=True):
     user: Optional["User"] = Relationship(back_populates="api_usage")
 
 
+# ─── Payments ────────────────────────────────────────────────────────────
+class PaymentOrder(SQLModel, table=True):
+    __tablename__ = "payment_order"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="user.id", index=True)
+    plan_id: int = Field(foreign_key="subscription_plan.id", index=True)
+    provider: str = Field(default="RAZORPAY")
+    order_id: str = Field(unique=True, index=True)
+    receipt: str = Field(index=True)
+    amount_paise: int
+    currency: str = Field(default="INR")
+    purpose: Optional[str] = None
+    status: str = Field(default=PaymentOrderStatus.CREATED)
+    notes_json: Optional[str] = None
+    provider_payload_json: Optional[str] = None
+    payment_id: Optional[str] = None
+    signature: Optional[str] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    paid_at: Optional[datetime] = None
+
+    transaction: Optional["PaymentTransaction"] = Relationship(back_populates="payment_order")
+
+
+class PaymentTransaction(SQLModel, table=True):
+    __tablename__ = "payment_transaction"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="user.id", index=True)
+    payment_order_id: int = Field(foreign_key="payment_order.id", unique=True, index=True)
+    provider: str = Field(default="RAZORPAY")
+    payment_id: str = Field(index=True)
+    order_id: str = Field(index=True)
+    signature: Optional[str] = None
+    status: str = Field(default=PaymentStatus.VERIFIED)
+    amount_paise: int
+    currency: str = Field(default="INR")
+    metadata_json: Optional[str] = None
+    provider_payload_json: Optional[str] = None
+    verified_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+    payment_order: Optional[PaymentOrder] = Relationship(back_populates="transaction")
+
+
 # ─── Import User for forward references ──────────────────
 # This is needed since User model references these via Relationship
 from app.models.user import User
@@ -222,3 +279,5 @@ PromoCodeUsage.model_rebuild()
 UserSession.model_rebuild()
 APIKey.model_rebuild()
 APIUsage.model_rebuild()
+PaymentOrder.model_rebuild()
+PaymentTransaction.model_rebuild()

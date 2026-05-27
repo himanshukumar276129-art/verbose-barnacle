@@ -13,6 +13,7 @@ class ImageEnhancer:
     """
     def __init__(self):
         self.device = "cpu"
+        self.force_cpu_only = True
         self.pytorch_available = False
         self.model_loaded = False
         self.model = None
@@ -21,7 +22,7 @@ class ImageEnhancer:
         try:
             import torch
             self.pytorch_available = True
-            if torch.cuda.is_available():
+            if not self.force_cpu_only and torch.cuda.is_available():
                 self.device = "cuda"
             logger.info(f"PyTorch is available. Selected device for model execution: {self.device}")
         except ImportError:

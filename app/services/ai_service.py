@@ -26,6 +26,8 @@ from .providers.kling_provider import KlingProvider
 from .providers.ollama_provider import OllamaProvider
 from .providers.chutes_provider import ChutesProvider
 from .providers.groq_provider import GroqProvider
+from .providers.genspark_provider import GensparkProvider
+from .providers.tripo3d_provider import Tripo3DProvider
 from .providers.gemini_provider import GeminiProvider
 from .providers.bytez_provider import BytezProvider
 from .providers.openrouter_provider import OpenRouterProvider
@@ -450,6 +452,9 @@ class AIToolsService:
             if isinstance(result, dict) and "video" in result:
                 return result["video"]["url"]
             return result
+
+        elif provider.lower() == "genspark":
+            return await GensparkProvider.generate_video(prompt, tier)
             
         elif provider.lower() == "pixverse":
             # Pixverse Video Generation
@@ -825,6 +830,9 @@ class AIToolsService:
                 {"prompt": prompt},
                 tier
             )
+
+        elif provider.lower() in {"tripo", "tripo3d", "tripo3d.ai"}:
+            return await Tripo3DProvider.generate_model(prompt, tier)
         
         elif provider.lower() == "piapi" or provider.lower() == "trellis":
             return await PiAPIProvider.generate_3d_trellis(prompt, tier)

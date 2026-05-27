@@ -7,6 +7,7 @@ from app.db.session import get_session
 from app.models.user import User
 from app.models.token import SubscriptionPlan, UserSubscription
 from app.routers.auth import get_current_user_auth
+from app.services.subscription_service import SubscriptionService
 from app.services.token_service import TokenService
 
 router = APIRouter(prefix="/subscriptions", tags=["Subscriptions"])
@@ -44,26 +45,9 @@ async def get_current_subscription(
     sub = session.exec(
         select(UserSubscription).where(UserSubscription.user_id == user.id)
     ).first()
-
-    if not sub:
-        return {
-            "success": True,
-            "data": {
-                "plan": "Free", "status": "active",
-                "features": ["100 credits on signup", "10 daily free credits", "Basic features"]
-            }
-        }
-
-    plan = session.get(SubscriptionPlan, sub.plan_id)
     return {
         "success": True,
-        "data": {
-            "plan": plan.name, "status": sub.status,
-            "token_allocation": plan.token_allocation,
-            "daily_credits": plan.daily_credits,
-            "features": json.loads(plan.features) if plan.features else [],
-            "current_period_end": sub.current_period_end.isoformat()
-        }
+        "data": SubscriptionService.get_subscription_summary(session, user.id),
     }
 
 
@@ -85,29 +69,7 @@ async def subscribe(
     if not plan:
         raise HTTPException(status_code=404, detail="Plan not found.")
 
-    period_end = datetime.utcnow() + timedelta(days=30)
-
-    # Check existing subscription
-    existing = session.exec(
-        select(UserSubscription).where(UserSubscription.user_id == user.id)
-    ).first()
-
-    if existing:
-        existing.plan_id = plan.id
-        existing.status = "active"
-        existing.current_period_start = datetime.utcnow()
-        existing.current_period_end = period_end
-        existing.payment_id = payment_id
-        session.add(existing)
-    else:
-        sub = UserSubscription(
-            user_id=user.id, plan_id=plan.id, status="active",
-            current_period_start=datetime.utcnow(),
-            current_period_end=period_end, payment_id=payment_id
-        )
-        session.add(sub)
-
-    session.commit()
+    sub = SubscriptionService.activate_plan(session, user, plan, payment_id=payment_id)
 
     # Add token allocation
     TokenService.add_credits(
@@ -124,6 +86,7 @@ async def subscribe(
         "data": {
             "plan": plan.name,
             "credits_added": plan.token_allocation,
-            "expires_at": period_end.isoformat()
+            "expires_at": sub.current_period_end.isoformat() if sub.current_period_end else None,
+            "subscription": SubscriptionService.get_subscription_summary(session, user.id),
         }
     }

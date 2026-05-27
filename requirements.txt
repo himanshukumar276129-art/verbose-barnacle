@@ -28,3 +28,4 @@ pymeshlab>=2023.12.12
 pygltflib>=1.16.2
 numpy-stl>=3.1.0
 pyvista>=0.43.0
+edge-tts==6.1.12

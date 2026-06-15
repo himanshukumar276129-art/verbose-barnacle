@@ -11,8 +11,9 @@ class UserBase(SQLModel):
 
 
 class User(UserBase, table=True):
+    __tablename__ = "user"
     id: Optional[int] = Field(default=None, primary_key=True)
-    hashed_password: str
+    hashed_password: str = Field(default="")
     role: str = Field(default="USER")  # USER or ADMIN
     referral_code: str = Field(unique=True, index=True, default="")
     referred_by: Optional[str] = None

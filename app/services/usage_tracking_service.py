@@ -34,6 +34,12 @@ class UsageTrackingService:
     @staticmethod
     def check_limit(session: Session, user_id: int, tool_type: str, plan: str) -> bool:
         """Check if the user has reached their daily limit for a tool."""
+        # Check if user is admin
+        from ..models.user import User
+        user = session.get(User, user_id)
+        if user and user.role == "ADMIN":
+            return True # Admin bypass
+
         if plan.upper() != "ULTRA":
             # For non-ultra users, we might use a different logic (credits)
             # but for this specific API request, we assume it's Ultra-focused

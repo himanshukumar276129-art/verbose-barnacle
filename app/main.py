@@ -29,7 +29,10 @@ from app.routes.admin import router as admin_media_router
 from app.routes.processor import router as processor_router
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger("app.main")
 
 app = FastAPI(
@@ -79,6 +82,30 @@ async def json_decode_exception_handler(request: Request, exc: JSONDecodeError):
         },
     )
 
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """
+    Global exception handler for unhandled exceptions.
+    This prevents 500 errors from leaking without logging.
+    """
+    logger.exception(
+        "Unhandled exception on %s %s - %s: %s",
+        request.method,
+        request.url.path,
+        type(exc).__name__,
+        str(exc)
+    )
+    
+    return JSONResponse(
+        status_code=500,
+        content={
+            "success": False,
+            "message": "Internal server error.",
+            "detail": str(exc) if settings.APP_ENV != "production" else "An unexpected error occurred.",
+            "error_type": type(exc).__name__,
+        },
+    )
+
 # Add Middlewares
 app.add_middleware(APILoggerMiddleware)
 
@@ -97,15 +124,16 @@ app.add_middleware(
 # ────────────────────────────────────────────────────────────
 @app.on_event("startup")
 def on_startup():
+    logger.info("🚀 Starting VedaCLI Backend...")
     logger.info("Initializing SQLModel Database Tables...")
     try:
         init_db()
-        logger.info("Database initialized successfully.")
+        logger.info("✅ Database initialized successfully.")
     except Exception as e:
-        logger.error(f"Failed to initialize database tables: {e}", exc_info=True)
+        logger.error(f"❌ Failed to initialize database tables: {e}", exc_info=True)
 
     # Diagnostic: list all registered routes
-    logger.info("Registered Routes:")
+    logger.info("📍 Registered Routes:")
     for route in app.routes:
         methods = getattr(route, "methods", {"GET"})
         path = getattr(route, "path", str(route))
@@ -114,9 +142,10 @@ def on_startup():
     # Log Supabase configuration status
     from app.services.supabase_service import SupabaseService
     if SupabaseService.is_configured():
-        logger.info("Supabase auth: CONFIGURED ✓")
+        logger.info("✅ Supabase auth: CONFIGURED")
     else:
-        logger.warning("Supabase auth: NOT CONFIGURED — register/login will fail!")
+        logger.warning("⚠️  Supabase auth: NOT CONFIGURED — register/login will fail!")
+        logger.warning("⚠️  Make sure SUPABASE_URL and SUPABASE_KEY are set in environment variables")
 
     # Log database URL (masked)
     db_url = settings.DATABASE_URL
@@ -125,6 +154,8 @@ def on_startup():
         logger.info(f"Database backend: {scheme}")
     else:
         logger.info(f"Database URL: {db_url[:20]}…")
+    
+    logger.info("✅ Backend startup complete!")
 
 
 # ────────────────────────────────────────────────────────────

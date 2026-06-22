@@ -48,8 +48,8 @@ class SupabaseService:
         return settings.SUPABASE_URL.rstrip("/")
 
     @staticmethod
-    def _headers(access_token: Optional[str] = None) -> dict[str, str]:
-        api_key = settings.SUPABASE_SERVICE_ROLE_KEY or settings.SUPABASE_KEY
+    def _headers(access_token: Optional[str] = None, *, service_role: bool = False) -> dict[str, str]:
+        api_key = settings.SUPABASE_SERVICE_ROLE_KEY if service_role else (settings.SUPABASE_SERVICE_ROLE_KEY or settings.SUPABASE_KEY)
         if not api_key:
             raise RuntimeError("Supabase auth is not configured (SUPABASE_KEY missing).")
 
@@ -59,6 +59,8 @@ class SupabaseService:
         }
         if access_token:
             headers["Authorization"] = f"Bearer {access_token}"
+        elif service_role and api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
         return headers
 
     @staticmethod
@@ -136,6 +138,59 @@ class SupabaseService:
             raise SupabaseAuthError(error_msg, status_code=response.status_code)
 
         return data
+
+
+    @staticmethod
+    def is_confirmation_email_error(error: Exception) -> bool:
+        message = str(getattr(error, "message", error)).lower()
+        return "confirmation email" in message or "sending email" in message or "send email" in message
+
+    @staticmethod
+    async def create_user_without_confirmation_email(
+        email: str,
+        password: str,
+        metadata: Optional[dict[str, Any]] = None,
+    ) -> dict[str, Any]:
+        """Create a Supabase auth user through the Admin API without sending confirmation email.
+
+        This is a production safety fallback for cases where Supabase /signup
+        succeeds logically but fails while dispatching the confirmation email
+        because SMTP is misconfigured or the provider rejects the message.
+        It requires SUPABASE_SERVICE_ROLE_KEY and must only run server-side.
+        """
+        if not settings.SUPABASE_SERVICE_ROLE_KEY:
+            raise RuntimeError(
+                "SUPABASE_SERVICE_ROLE_KEY is required to bypass failed Supabase confirmation email delivery."
+            )
+
+        payload: dict[str, Any] = {
+            "email": email,
+            "password": password,
+            "email_confirm": False,
+        }
+        if metadata:
+            payload["user_metadata"] = metadata
+
+        logger.warning("Creating Supabase user via Admin API after confirmation email failure for email=%s", email)
+        try:
+            async with httpx.AsyncClient(timeout=settings.SUPABASE_TIMEOUT_SECONDS) as client:
+                response = await client.post(
+                    f"{SupabaseService._base_url()}/auth/v1/admin/users",
+                    headers=SupabaseService._headers(service_role=True),
+                    json=payload,
+                )
+        except httpx.HTTPError as exc:
+            logger.error("Supabase admin user creation HTTP error after email failure: %s", exc)
+            raise RuntimeError("Supabase admin user creation is unavailable.") from exc
+
+        data = SupabaseService._safe_json(response)
+        logger.info("Supabase admin user creation response status=%s", response.status_code)
+        if response.status_code not in {200, 201}:
+            error_msg = SupabaseService._extract_error(data)
+            logger.error("Supabase admin user creation failed after email failure: %s (status=%s)", error_msg, response.status_code)
+            raise SupabaseAuthError(error_msg, status_code=response.status_code)
+
+        return {"user": data}
 
     # ─── sign_in_with_password ────────────────────────────
     @staticmethod

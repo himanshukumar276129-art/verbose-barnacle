@@ -10,6 +10,7 @@ from json import JSONDecodeError
 
 from app.core.config import settings
 from app.db.session import init_db
+from app.email.database import init_db as init_email_db
 from app.middleware.api_logger import APILoggerMiddleware
 
 # Routers
@@ -23,6 +24,7 @@ from app.routers.wallet import router as wallet_router
 from app.routers.api_keys import router as api_keys_router
 from app.routers.payments import router as payments_router
 from app.routers.oauth import router as oauth_router
+from app.email.routes import router as email_router
 
 # Advanced media routes
 from app.routes.media import router as media_router
@@ -132,6 +134,13 @@ def on_startup():
         logger.info("✅ Database initialized successfully.")
     except Exception as e:
         logger.error(f"❌ Failed to initialize database tables: {e}", exc_info=True)
+    
+    logger.info("Initializing Email Verification Database...")
+    try:
+        init_email_db()
+        logger.info("✅ Email verification database initialized successfully.")
+    except Exception as e:
+        logger.error(f"❌ Failed to initialize email database: {e}", exc_info=True)
 
     # Diagnostic: list all registered routes
     logger.info("📍 Registered Routes:")
@@ -179,6 +188,7 @@ app.include_router(wallet_router, prefix="/api/v1")
 app.include_router(api_keys_router, prefix="/api/v1")
 app.include_router(payments_router, prefix="/api/v1")
 app.include_router(oauth_router)  # OAuth callback at /auth/callback (no prefix)
+app.include_router(email_router)  # Email verification routes at /api/v1/email
 
 # Register new advanced media routes
 app.include_router(media_router, prefix="/api/v1")

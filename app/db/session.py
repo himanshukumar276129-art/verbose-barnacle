@@ -56,6 +56,7 @@ def init_db():
     import app.models.user     # noqa: F401
     import app.models.token    # noqa: F401
     import app.models.task     # noqa: F401
+    import app.models.api_key  # noqa: F401
 
     logger.info("Running SQLModel.metadata.create_all …")
     SQLModel.metadata.create_all(engine)

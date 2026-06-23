@@ -483,9 +483,19 @@ class Settings(BaseSettings):
     SUPABASE_SERVICE_ROLE_KEY: Optional[str] = None
     SUPABASE_TIMEOUT_SECONDS: int = 15
 
-    # OAuth / App Configuration
+    # OAuth / App Configuration (Generic - fallback)
     OAUTH_CLIENT_ID: Optional[str] = None
     OAUTH_CLIENT_SECRET: Optional[str] = None
+    
+    # Google OAuth Credentials
+    GOOGLE_OAUTH_CLIENT_ID: Optional[str] = None
+    GOOGLE_OAUTH_CLIENT_SECRET: Optional[str] = None
+    
+    # GitHub OAuth Credentials
+    GITHUB_OAUTH_CLIENT_ID: Optional[str] = None
+    GITHUB_OAUTH_CLIENT_SECRET: Optional[str] = None
+    
+    # App URLs
     APP_BASE_URL: Optional[str] = None
     FRONTEND_BASE_URL: Optional[str] = None
     

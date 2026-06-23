@@ -27,17 +27,33 @@ def _basic_auth_header(client_id: str, client_secret: str) -> str:
     return f"Basic {b64}"
 
 
-async def exchange_code_for_token(code: str, redirect_uri: str, timeout: int = 15) -> Dict[str, Any]:
+async def exchange_code_for_token(code: str, redirect_uri: str, provider: Optional[str] = None, timeout: int = 15) -> Dict[str, Any]:
     supabase_base = (os.getenv("SUPABASE_URL") or settings.SUPABASE_URL or "").rstrip("/")
     if not supabase_base:
         raise SupabaseOAuthError("SUPABASE_URL not configured")
 
     token_url = f"{supabase_base}/auth/v1/token"
 
-    client_id = os.getenv("OAUTH_CLIENT_ID") or settings.OAUTH_CLIENT_ID
-    client_secret = os.getenv("OAUTH_CLIENT_SECRET") or settings.OAUTH_CLIENT_SECRET
+    # Get provider-specific credentials
+    client_id = None
+    client_secret = None
+    
+    if provider and provider.lower() == "google":
+        client_id = os.getenv("GOOGLE_OAUTH_CLIENT_ID") or settings.GOOGLE_OAUTH_CLIENT_ID
+        client_secret = os.getenv("GOOGLE_OAUTH_CLIENT_SECRET") or settings.GOOGLE_OAUTH_CLIENT_SECRET
+        logger.debug("Using Google OAuth credentials")
+    elif provider and provider.lower() == "github":
+        client_id = os.getenv("GITHUB_OAUTH_CLIENT_ID") or settings.GITHUB_OAUTH_CLIENT_ID
+        client_secret = os.getenv("GITHUB_OAUTH_CLIENT_SECRET") or settings.GITHUB_OAUTH_CLIENT_SECRET
+        logger.debug("Using GitHub OAuth credentials")
+    else:
+        # Fallback to generic credentials if provider not detected
+        client_id = os.getenv("OAUTH_CLIENT_ID") or settings.OAUTH_CLIENT_ID
+        client_secret = os.getenv("OAUTH_CLIENT_SECRET") or settings.OAUTH_CLIENT_SECRET
+        logger.debug("Using generic OAuth credentials (provider=%s)", provider)
+    
     if not client_id or not client_secret:
-        raise SupabaseOAuthError("OAUTH_CLIENT_ID or OAUTH_CLIENT_SECRET not configured")
+        raise SupabaseOAuthError(f"OAuth credentials not configured for provider={provider}")
 
     headers = {
         "Content-Type": "application/x-www-form-urlencoded",

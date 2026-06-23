@@ -31,8 +31,8 @@ SESSION_COOKIE_SAMESITE = os.getenv("SESSION_COOKIE_SAMESITE", settings.SESSION_
 FRONTEND_BASE_URL = os.getenv("FRONTEND_BASE_URL") or settings.FRONTEND_BASE_URL or None
 APP_BASE_URL = os.getenv("APP_BASE_URL") or settings.APP_BASE_URL or None
 
-# Regex pattern for safe relative state URLs (prevents open redirects)
-_ALLOWED_RELATIVE_STATE = re.compile(r"^\/[A-Za-z0-9_\-\/\?\=\&\#]*$")
+# Regex pattern for safe relative state URLs (allows provider prefix like "google:" or "github:")
+_ALLOWED_RELATIVE_STATE = re.compile(r"^(google:|github:|)\/[A-Za-z0-9_\-\/\?\=\&\#]*$")
 
 
 def _safe_frontend_redirect(state: Optional[str] = None) -> str:
@@ -90,11 +90,21 @@ async def auth_callback(
 
     redirect_uri = f"{APP_BASE_URL.rstrip('/')}/auth/callback"
 
+    # Pre-detect provider from state parameter (format: "google:/path" or "github:/path")
+    detected_provider_from_state = None
+    original_state = state
+    if state and state.startswith(("google:", "github:")):
+        provider_part, _, path_part = state.partition(":")
+        detected_provider_from_state = provider_part.lower()
+        state = path_part or "/"  # Extract the redirect path
+        logger.info("Provider detected from state parameter: %s", detected_provider_from_state)
+
     # Step 1: Exchange authorization code for access token
     try:
         token_payload = await exchange_code_for_token(
             code=code,
             redirect_uri=redirect_uri,
+            provider=detected_provider_from_state,
             timeout=settings.SUPABASE_TIMEOUT_SECONDS,
         )
         logger.debug("Token payload keys: %s", list(token_payload.keys()))
@@ -105,8 +115,8 @@ async def auth_callback(
             url=f"{redirect_target}?error=token_exchange_failed", status_code=302
         )
 
-    # Step 2: Detect provider from payload
-    provider = detect_provider_from_payload(token_payload) or None
+    # Step 2: Detect provider from payload (if not already detected from state)
+    provider = detected_provider_from_state or detect_provider_from_payload(token_payload) or None
     logger.info("Detected OAuth provider=%s", provider)
 
     # Step 3: Fetch user info from Supabase

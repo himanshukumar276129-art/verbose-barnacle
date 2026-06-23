@@ -25,6 +25,8 @@ class User(UserBase, table=True):
     is_pro: bool = Field(default=False)
     subscription_start: Optional[datetime] = Field(default=None)
     subscription_end: Optional[datetime] = Field(default=None)
+    provider: Optional[str] = Field(default=None, index=True)        # e.g. "google" or "github"
+    provider_id: Optional[str] = Field(default=None, index=True)     # provider's subject/id
 
     # Existing relationships
     subscription: Optional["Subscription"] = Relationship(back_populates="user")

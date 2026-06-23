@@ -482,6 +482,21 @@ class Settings(BaseSettings):
     SUPABASE_KEY: Optional[str] = None
     SUPABASE_SERVICE_ROLE_KEY: Optional[str] = None
     SUPABASE_TIMEOUT_SECONDS: int = 15
+
+    # OAuth / App Configuration
+    OAUTH_CLIENT_ID: Optional[str] = None
+    OAUTH_CLIENT_SECRET: Optional[str] = None
+    APP_BASE_URL: Optional[str] = None
+    FRONTEND_BASE_URL: Optional[str] = None
+    
+    # Session Cookie Configuration
+    SESSION_COOKIE_NAME: str = "vedaapex_session"
+    SESSION_COOKIE_MAX_AGE: int = 60 * 60 * 24 * 7  # 7 days
+    SESSION_COOKIE_SECURE: bool = True
+    SESSION_COOKIE_SAMESITE: str = "lax"
+    
+    # Environment mode
+    APP_ENV: str = "development"
     
     RAZORPAY_KEY_ID: Optional[str] = None
     RAZORPAY_KEY_SECRET: Optional[str] = None

@@ -9,3 +9,4 @@ pytest>=7.0.0
 pytest-asyncio>=0.21.0
 aioredis>=2.0.0
 sqlmodel==0.0.22
+bcrypt==4.1.3

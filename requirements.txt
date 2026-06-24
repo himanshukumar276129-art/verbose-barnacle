@@ -32,7 +32,7 @@ requests==2.31.0
 # Async & Caching
 redis==5.0.1
 aioredis==2.0.1
-asyncio-contextmanager==1.0.0
+asyncio-contextmanager==1.0.1
 
 # Database (if needed)
 sqlalchemy==2.0.25

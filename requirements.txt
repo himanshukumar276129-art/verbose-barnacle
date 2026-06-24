@@ -11,6 +11,7 @@ requests==2.31.0
 
 redis==5.0.1
 aioredis==2.0.1
+edge-tts==6.1.12
 
 sqlmodel==0.0.22
 sqlalchemy==2.0.25

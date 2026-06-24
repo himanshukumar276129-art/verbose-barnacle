@@ -101,7 +101,7 @@ async def revoke_api_key(
 async def register(body: UserRegister, request: Request, session: Session = Depends(get_session)):
     """
     Register a new user with email and password.
-    
+
     Handles:
     - Supabase configuration validation
     - Email/password validation
@@ -142,15 +142,38 @@ async def register(body: UserRegister, request: Request, session: Session = Depe
             logger.info("Supabase sign_up succeeded for email=%s", email)
         except SupabaseAuthError as exc:
             logger.warning("Supabase sign_up error for email=%s: %s (status=%s)", email, exc.message, exc.status_code)
-            status_code = exc.status_code
-            if "already" in exc.message.lower() and status_code == 400:
-                status_code = 409
-            
-            logger.debug("Supabase signup error details: %s", exc.message)
-            raise HTTPException(
-                status_code=status_code,
-                detail=exc.message,
-            ) from exc
+            if SupabaseService.is_confirmation_email_error(exc):
+                logger.exception(
+                    "Supabase confirmation email failed for email=%s; continuing registration via Admin API fallback",
+                    email,
+                )
+                try:
+                    auth_result = await SupabaseService.create_user_without_confirmation_email(
+                        email=email,
+                        password=password,
+                        metadata={"full_name": full_name} if full_name else None,
+                    )
+                except Exception as fallback_exc:
+                    logger.exception(
+                        "Admin API fallback failed after confirmation email failure for email=%s; continuing with local user creation",
+                        email,
+                    )
+                    auth_result = {
+                        "user": {
+                            "email": email,
+                            "user_metadata": {"full_name": full_name} if full_name else {},
+                        }
+                    }
+            else:
+                status_code = exc.status_code
+                if "already" in exc.message.lower() and status_code == 400:
+                    status_code = 409
+
+                logger.debug("Supabase signup error details: %s", exc.message)
+                raise HTTPException(
+                    status_code=status_code,
+                    detail=exc.message,
+                ) from exc
         except Exception as exc:
             logger.exception("Unexpected error during Supabase sign_up for email=%s", email)
             raise HTTPException(
@@ -267,7 +290,7 @@ async def register(body: UserRegister, request: Request, session: Session = Depe
 async def login(body: UserLogin, session: Session = Depends(get_session)):
     """
     Login with email and password.
-    
+
     Handles:
     - Supabase configuration validation
     - Credential validation
@@ -316,7 +339,7 @@ async def login(body: UserLogin, session: Session = Depends(get_session)):
         try:
             user_data = auth_result.get("user") or {}
             user, _ = SupabaseService.get_or_create_local_user(
-                session, 
+                session,
                 user_data,
                 email_fallback=email
             )
